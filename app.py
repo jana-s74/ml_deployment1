@@ -1,43 +1,60 @@
 from flask import Flask, request, jsonify
 import pandas as pd
-import joblib
+import pickle
 
 # Initialize Flask app
 app = Flask(__name__)
 
-# Load trained model and scaler
-model = joblib.load("model.pkl")
-scaler = joblib.load("scaler.pkl")
+# ================================
+# Load model, scaler, and columns
+# ================================
+with open("model.pkl", "rb") as f:
+    model = pickle.load(f)
 
-# Load column names used during training
-X = pd.read_csv("X_columns.csv")  # only column names required
+with open("scaler.pkl", "rb") as f:
+    scaler = pickle.load(f)
 
+with open("columns.pkl", "rb") as f:
+    columns = pickle.load(f)   # this should be a list of feature names
+
+
+# ================================
+# Prediction API
+# ================================
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        # Get JSON data from request
-        data = request.get_json(force=True)
+        # Get JSON data
+        data = request.get_json()
+
+        if data is None:
+            return jsonify({"error": "No JSON data received"}), 400
 
         # Convert JSON to DataFrame with correct column order
-        input_df = pd.DataFrame([data])
-        input_df = input_df[X.columns]
+        input_df = pd.DataFrame([data], columns=columns)
+
+        # Check for missing values
+        if input_df.isnull().values.any():
+            return jsonify({"error": "Missing or invalid input values"}), 400
 
         # Scale input
         input_scaled = scaler.transform(input_df)
 
-        # Predict
+        # Make prediction
         prediction = model.predict(input_scaled)
 
-        # Return result
-        return jsonify({
-            'prediction': int(prediction[0])
-        })
+        # Convert numpy type to normal int
+        result = int(prediction[0])
+
+        return jsonify({"prediction": result})
 
     except Exception as e:
-        return jsonify({
-            'error': str(e)
-        })
+        return jsonify({"error": str(e)}), 500
 
-# Run the Flask app
+
+# ================================
+# Run Flask App
+# ================================
 if __name__ == "__main__":
     app.run(debug=True)
+
