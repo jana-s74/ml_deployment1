@@ -1,60 +1,58 @@
 from flask import Flask, request, jsonify
 import pandas as pd
 import pickle
+import os
 
-# Initialize Flask app
 app = Flask(__name__)
 
 # ================================
 # Load model, scaler, and columns
 # ================================
-with open("model.pkl", "rb") as f:
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+with open(os.path.join(BASE_DIR, "model.pkl"), "rb") as f:
     model = pickle.load(f)
 
-with open("scaler.pkl", "rb") as f:
+with open(os.path.join(BASE_DIR, "scaler.pkl"), "rb") as f:
     scaler = pickle.load(f)
 
-with open("columns.pkl", "rb") as f:
-    columns = pickle.load(f)   # this should be a list of feature names
+with open(os.path.join(BASE_DIR, "columns.pkl"), "rb") as f:
+    columns = pickle.load(f)
 
 
 # ================================
 # Prediction API
 # ================================
-@app.route('/predict', methods=['POST'])
+@app.route("/predict", methods=["POST"])
 def predict():
     try:
-        # Get JSON data
         data = request.get_json()
 
-        if data is None:
+        if not data:
             return jsonify({"error": "No JSON data received"}), 400
 
-        # Convert JSON to DataFrame with correct column order
-        input_df = pd.DataFrame([data], columns=columns)
+        input_df = pd.DataFrame([data])
 
-        # Check for missing values
-        if input_df.isnull().values.any():
-            return jsonify({"error": "Missing or invalid input values"}), 400
+        # Ensure correct column order
+        input_df = input_df[columns]
 
-        # Scale input
+        if input_df.isnull().any().any():
+            return jsonify({"error": "Missing input values"}), 400
+
         input_scaled = scaler.transform(input_df)
-
-        # Make prediction
         prediction = model.predict(input_scaled)
 
-        # Convert numpy type to normal int
-        result = int(prediction[0])
-
-        return jsonify({"prediction": result})
+        return jsonify({"prediction": int(prediction[0])})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 # ================================
-# Run Flask App
+# Render entry point
 # ================================
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
 
